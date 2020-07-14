@@ -8,8 +8,8 @@
 
 typedef std::chrono::high_resolution_clock Clock;
 
-#define ITER_ROW 1000
-#define ITER_COL 2000
+#define ITER_ROW 1024
+#define ITER_COL 1024
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -55,21 +55,6 @@ int main(int argc, char **argv) {
     int rows = ITER_ROW;
     int cols = ITER_COL;
 
-    if (argc > 1) {
-        rows = atoi(argv[1]);
-    }
-    if (argc > 2) {
-        cols = atoi(argv[2]);
-    }
-
-    if (rows * cols > 1024) {
-      printf("You cannot have more than 1024 threads per block\n");
-      return -1;
-    }
-    else {
-      printf("Alas you cannot see GPU power as the math is trivial in the kernel\n");
-    }
-
     int *a, *b, *c;
     int *gpu_a, *gpu_b, *gpu_c;
     
@@ -104,7 +89,10 @@ int main(int argc, char **argv) {
     std::cout << "vector_add_cpu: "
     << std::chrono::duration_cast<std::chrono::nanoseconds>(cpu_end - cpu_start).count()
     << " nanoseconds.\n";
-    print_matrix(c, rows, cols);
+    // print_matrix(c, rows, cols);
+    printf("CPU (0, 0): %d\n", *c);
+    printf("CPU (3, 17): %d\n", *(c+(13*cols)+17));
+    printf("CPU last: %d\n", *(c+(rows*cols)-1));
 
 
     *(c+(rows*cols)-1) = 0;
@@ -119,11 +107,13 @@ int main(int argc, char **argv) {
     // The triple angle brakets is a CUDA runtime extension that allows
     // parameters of a CUDA kernel call to be passed.
     // In this example, we are passing one thread block with ITER GPU threads.
-    auto gpu_start = Clock::now();
-    int numBlocks = 1;
-    dim3 threadsPerBlock(rows, cols);
 
-    matrix_add_gpu <<<numBlocks, threadsPerBlock>>> (gpu_a, gpu_b, gpu_c);
+    // why, these dimensions: just for fun: overall we wanted 1024x1024 threads and we can have only 1024 threads/block
+    dim3 blocksPerGrid(16, 64);
+    dim3 threadsPerBlock(32, 32);
+
+    auto gpu_start = Clock::now();
+    matrix_add_gpu <<<blocksPerGrid, threadsPerBlock>>> (gpu_a, gpu_b, gpu_c);
     gpuErrchk( cudaPeekAtLastError() );
 
     gpuErrchk(cudaDeviceSynchronize());
@@ -134,7 +124,10 @@ int main(int argc, char **argv) {
 
     gpuErrchk(cudaMemcpy(c, gpu_c, mem_size, cudaMemcpyDeviceToHost));
 
-    print_matrix(c, rows, cols);
+    printf("GPU (0, 0): %d\n", *c);
+    printf("GPU (3, 17): %d\n", *(c+(13*cols)+17));
+    printf("GPU last: %d\n", *(c+(rows*cols)-1));
+    //print_matrix(c, rows, cols);
 
     // Free the GPU-function based memory allocations
     cudaFree(gpu_a);
